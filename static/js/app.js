@@ -1,0 +1,324 @@
+// Application State
+let allUpdates = [];
+let activeFilter = 'all';
+let searchQuery = '';
+let selectedUpdate = null;
+
+// DOM Elements
+const refreshBtn = document.getElementById('refresh-btn');
+const refreshIcon = document.getElementById('refresh-icon');
+const lastUpdatedTime = document.getElementById('last-updated-time');
+const searchInput = document.getElementById('search-input');
+const filterButtons = document.querySelectorAll('.filter-btn');
+const feedContainer = document.getElementById('feed-container');
+
+// Counter Elements
+const countTotal = document.getElementById('count-total');
+const countFeatures = document.getElementById('count-features');
+const countChanges = document.getElementById('count-changes');
+const countIssues = document.getElementById('count-issues');
+
+// Modal Elements
+const tweetModal = document.getElementById('tweet-modal');
+const modalClose = document.getElementById('modal-close');
+const tweetTextArea = document.getElementById('tweet-text-area');
+const charCountVal = document.getElementById('char-count-val');
+const charCountProgress = document.getElementById('char-count-progress');
+const cancelTweetBtn = document.getElementById('cancel-tweet-btn');
+const submitTweetBtn = document.getElementById('submit-tweet-btn');
+
+// Initialize Application
+document.addEventListener('DOMContentLoaded', () => {
+  setupEventListeners();
+  fetchReleaseNotes();
+});
+
+// Event Listeners Setup
+function setupEventListeners() {
+  // Refresh Button
+  refreshBtn.addEventListener('click', fetchReleaseNotes);
+
+  // Search Input
+  searchInput.addEventListener('input', (e) => {
+    searchQuery = e.target.value.toLowerCase().trim();
+    renderFeed();
+  });
+
+  // Filter Buttons
+  filterButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      filterButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeFilter = btn.dataset.filter.toLowerCase();
+      renderFeed();
+    });
+  });
+
+  // Modal Actions
+  modalClose.addEventListener('click', closeTweetModal);
+  cancelTweetBtn.addEventListener('click', closeTweetModal);
+  
+  // Close modal on clicking overlay
+  tweetModal.addEventListener('click', (e) => {
+    if (e.target === tweetModal) {
+      closeTweetModal();
+    }
+  });
+
+  // Live Character Counter for Tweet Area
+  tweetTextArea.addEventListener('input', () => {
+    updateCharacterCount();
+  });
+
+  // Tweet Submission
+  submitTweetBtn.addEventListener('click', shareOnTwitter);
+}
+
+// Fetch Data from Flask API
+async function fetchReleaseNotes() {
+  setLoading(true);
+  try {
+    const response = await fetch('/api/release-notes');
+    const data = await response.json();
+    
+    if (data.success && data.updates) {
+      allUpdates = data.updates;
+      updateCounters();
+      renderFeed();
+      
+      // Update Timestamp
+      const now = new Date();
+      lastUpdatedTime.textContent = `Last updated: ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+    } else {
+      showErrorState(data.error || 'Failed to fetch release notes.');
+    }
+  } catch (error) {
+    console.error('Error fetching release notes:', error);
+    showErrorState('Network error occurred. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+}
+
+// Show/Hide Loading State
+function setLoading(isLoading) {
+  if (isLoading) {
+    refreshIcon.classList.add('spinning');
+    refreshBtn.disabled = true;
+    
+    // Render Skeletons
+    feedContainer.innerHTML = Array(4).fill(0).map(() => `
+      <div class="glass-panel skeleton-card"></div>
+    `).join('');
+  } else {
+    refreshIcon.classList.remove('spinning');
+    refreshBtn.disabled = false;
+  }
+}
+
+// Update Stats counters
+function updateCounters() {
+  countTotal.textContent = allUpdates.length;
+  countFeatures.textContent = allUpdates.filter(u => u.category.toLowerCase() === 'feature').length;
+  countChanges.textContent = allUpdates.filter(u => u.category.toLowerCase() === 'change').length;
+  countIssues.textContent = allUpdates.filter(u => u.category.toLowerCase() === 'issue').length;
+}
+
+// Filter and Search Updates
+function getFilteredUpdates() {
+  return allUpdates.filter(update => {
+    // 1. Filter by category
+    if (activeFilter !== 'all') {
+      if (update.category.toLowerCase() !== activeFilter) {
+        return false;
+      }
+    }
+    
+    // 2. Filter by search query
+    if (searchQuery) {
+      const matchText = `${update.category} ${update.date} ${update.content_text}`.toLowerCase();
+      return matchText.includes(searchQuery);
+    }
+    
+    return true;
+  });
+}
+
+// Group updates by date
+function groupUpdatesByDate(updates) {
+  const groups = {};
+  updates.forEach(update => {
+    if (!groups[update.date]) {
+      groups[update.date] = [];
+    }
+    groups[update.date].push(update);
+  });
+  return groups;
+}
+
+// Render the Feed Grid/List
+function renderFeed() {
+  const filtered = getFilteredUpdates();
+  
+  if (filtered.length === 0) {
+    renderEmptyState();
+    return;
+  }
+  
+  const grouped = groupUpdatesByDate(filtered);
+  
+  // Sort dates chronologically if needed (the feed is already sorted newest first)
+  let html = '';
+  
+  for (const date in grouped) {
+    html += `
+      <div class="date-group">
+        <h2 class="date-header">${date}</h2>
+        <div class="date-cards">
+          ${grouped[date].map(update => renderUpdateCard(update)).join('')}
+        </div>
+      </div>
+    `;
+  }
+  
+  feedContainer.innerHTML = html;
+}
+
+// Render Individual Update Card
+function renderUpdateCard(update) {
+  const categoryClass = `category-${update.category.toLowerCase()}`;
+  const tagClass = `tag-${update.category.toLowerCase()}`;
+  
+  return `
+    <div class="glass-panel update-card ${categoryClass}" id="card-${update.id}">
+      <div class="card-top">
+        <span class="tag ${tagClass}">${update.category}</span>
+        <span class="card-date">${update.date}</span>
+      </div>
+      <div class="card-body">
+        ${update.content_html}
+      </div>
+      <div class="card-actions">
+        <button class="btn btn-tweet" onclick="openTweetModal('${update.id}')">
+          <svg style="width: 14px; height: 14px; fill: currentColor; vertical-align: middle; margin-right: 4px;" viewBox="0 0 24 24">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+          </svg>
+          Tweet
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+// Render Empty/No Search Results State
+function renderEmptyState() {
+  feedContainer.innerHTML = `
+    <div class="glass-panel empty-state">
+      <svg viewBox="0 0 24 24">
+        <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+      </svg>
+      <h3>No release notes found</h3>
+      <p>Try adjusting your search terms or filters.</p>
+    </div>
+  `;
+}
+
+// Render Error State
+function showErrorState(message) {
+  feedContainer.innerHTML = `
+    <div class="glass-panel empty-state" style="border-color: var(--border-issue);">
+      <svg viewBox="0 0 24 24" style="fill: var(--color-issue);">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+      </svg>
+      <h3 style="color: var(--color-issue);">Failed to load updates</h3>
+      <p>${message}</p>
+      <button class="btn btn-secondary" style="margin-top: 1rem;" onclick="fetchReleaseNotes()">Try Again</button>
+    </div>
+  `;
+}
+
+// Open Tweet Composer Modal
+window.openTweetModal = function(updateId) {
+  selectedUpdate = allUpdates.find(u => u.id === updateId);
+  if (!selectedUpdate) return;
+  
+  // Format Tweet Content
+  const prefix = `BigQuery [${selectedUpdate.category}] (${selectedUpdate.date}): `;
+  const suffix = ` #BigQuery #GoogleCloud`;
+  const url = selectedUpdate.link;
+  
+  // Twitter counts URLs as 23 characters regardless of actual length
+  const twitterUrlLength = 23;
+  const fixedLength = prefix.length + suffix.length + twitterUrlLength + 2; // +2 for newlines/spaces
+  const maxSnippetLength = 280 - fixedLength;
+  
+  let snippet = selectedUpdate.content_text;
+  if (snippet.length > maxSnippetLength) {
+    snippet = snippet.substring(0, maxSnippetLength - 3) + '...';
+  }
+  
+  // Compose full tweet text
+  const initialTweetText = `${prefix}${snippet}\n\n${url}${suffix}`;
+  
+  tweetTextArea.value = initialTweetText;
+  updateCharacterCount();
+  
+  // Show Modal
+  tweetModal.classList.add('active');
+  tweetTextArea.focus();
+  
+  // Disable body scroll
+  document.body.style.overflow = 'hidden';
+};
+
+// Close Tweet Composer Modal
+function closeTweetModal() {
+  tweetModal.classList.remove('active');
+  selectedUpdate = null;
+  
+  // Re-enable body scroll
+  document.body.style.overflow = '';
+}
+
+// Update character counter in modal
+function updateCharacterCount() {
+  const text = tweetTextArea.value;
+  
+  // Twitter-compliant character counter
+  // Note: Twitter counts any HTTP/HTTPS URL as exactly 23 characters
+  const urlPattern = /https?:\/\/[^\s]+/g;
+  const urls = text.match(urlPattern) || [];
+  
+  let textLengthWithoutUrls = text;
+  urls.forEach(url => {
+    textLengthWithoutUrls = textLengthWithoutUrls.replace(url, '');
+  });
+  
+  const totalLength = textLengthWithoutUrls.length + (urls.length * 23);
+  charCountVal.textContent = totalLength;
+  
+  // Visual states based on length
+  const remaining = 280 - totalLength;
+  
+  charCountProgress.className = 'char-counter';
+  if (remaining < 0) {
+    charCountProgress.classList.add('danger');
+    submitTweetBtn.disabled = true;
+  } else if (remaining <= 20) {
+    charCountProgress.classList.add('warning');
+    submitTweetBtn.disabled = false;
+  } else {
+    submitTweetBtn.disabled = false;
+  }
+}
+
+// Share Tweet via Twitter Web Intent
+function shareOnTwitter() {
+  const tweetText = tweetTextArea.value;
+  const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
+  
+  // Open in a new tab
+  window.open(twitterUrl, '_blank', 'noopener,noreferrer');
+  
+  closeTweetModal();
+}

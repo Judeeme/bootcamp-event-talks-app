@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BigQuery Release Notes Navigator | Share Updates on X</title>
+  <meta name="description" content="Browse, search, filter, and share Google BigQuery release notes instantly on Twitter/X. Powered by Flask and a glassmorphic modern web interface.">
+  
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="glass-panel" id="app-header">
+      <div class="brand">
+        <div class="brand-icon">
+          <!-- BigQuery / Data Warehouse Representation Icon -->
+          <svg viewBox="0 0 24 24">
+            <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/>
+          </svg>
+        </div>
+        <div>
+          <h1>BigQuery Release Navigator</h1>
+          <p>Stay ahead with real-time updates and share directly to Twitter/X</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span class="timestamp" id="last-updated-time">Last updated: Fetching...</span>
+        <button class="btn btn-primary" id="refresh-btn">
+          <svg id="refresh-icon" style="width: 16px; height: 16px; fill: currentColor; vertical-align: middle;" viewBox="0 0 24 24">
+            <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+          </svg>
+          Refresh Feed
+        </button>
+      </div>
+    </header>
+
+    <!-- Stats Dashboard Row -->
+    <div class="stats-row" id="stats-dashboard">
+      <div class="glass-panel stat-card">
+        <div class="stat-val" id="count-total">0</div>
+        <div class="stat-lbl">Total Notes</div>
+      </div>
+      <div class="glass-panel stat-card" style="border-left: 3px solid var(--color-feature);">
+        <div class="stat-val" id="count-features" style="color: var(--color-feature);">0</div>
+        <div class="stat-lbl">Features</div>
+      </div>
+      <div class="glass-panel stat-card" style="border-left: 3px solid var(--color-change);">
+        <div class="stat-val" id="count-changes" style="color: var(--color-change);">0</div>
+        <div class="stat-lbl">Changes</div>
+      </div>
+      <div class="glass-panel stat-card" style="border-left: 3px solid var(--color-issue);">
+        <div class="stat-val" id="count-issues" style="color: var(--color-issue);">0</div>
+        <div class="stat-lbl">Issues</div>
+      </div>
+    </div>
+
+    <!-- Filter and Search controls -->
+    <section class="glass-panel controls-card" id="filter-controls">
+      <div class="search-bar">
+        <input type="text" id="search-input" placeholder="Search by keyword, date, feature details..." aria-label="Search BigQuery release notes">
+        <svg viewBox="0 0 24 24">
+          <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+        </svg>
+      </div>
+      
+      <div class="filter-group">
+        <span class="filter-label">Filter by Type:</span>
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="feature">Features</button>
+        <button class="filter-btn" data-filter="change">Changes</button>
+        <button class="filter-btn" data-filter="issue">Issues</button>
+      </div>
+    </section>
+
+    <!-- Release Feed Container -->
+    <main class="feed-container" id="feed-container">
+      <!-- Skeletons will be injected here on load -->
+      <div class="glass-panel skeleton-card"></div>
+      <div class="glass-panel skeleton-card"></div>
+      <div class="glass-panel skeleton-card"></div>
+      <div class="glass-panel skeleton-card"></div>
+    </main>
+  </div>
+
+  <!-- Tweet Composer Modal -->
+  <div class="modal-overlay" id="tweet-modal">
+    <div class="glass-panel modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title">Tweet Preview</h3>
+        <button class="modal-close" id="modal-close" aria-label="Close modal">
+          <svg viewBox="0 0 24 24">
+            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+          </svg>
+        </button>
+      </div>
+      
+      <div class="modal-body">
+        <div class="tweet-preview">
+          <div class="avatar">BQ</div>
+          <div class="tweet-content">
+            <div class="tweet-user">
+              <span class="tweet-name">BigQuery News</span>
+              <span class="tweet-handle">@bq_release</span>
+            </div>
+            <textarea class="tweet-text-area" id="tweet-text-area" aria-label="Tweet editor"></textarea>
+          </div>
+        </div>
+        
+        <div class="character-count-row">
+          <div class="char-counter" id="char-count-progress">
+            <span id="char-count-val">0</span> / 280 characters
+          </div>
+        </div>
+      </div>
+      
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancel-tweet-btn">Cancel</button>
+        <button class="btn btn-primary" id="submit-tweet-btn" style="background: #1d9bf0; box-shadow: 0 4px 14px rgba(29, 155, 240, 0.25);">
+          <svg style="width: 14px; height: 14px; fill: currentColor; vertical-align: middle;" viewBox="0 0 24 24">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+          </svg>
+          Post to Twitter
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Application Logic -->
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
