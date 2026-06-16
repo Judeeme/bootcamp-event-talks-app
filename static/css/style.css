@@ -520,10 +520,33 @@ header::before {
 .card-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 0.5rem;
   border-top: 1px solid var(--border-light);
   padding-top: 0.8rem;
   margin-top: 0.5rem;
 }
+
+.btn-copy {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  border: 1px solid var(--border-light);
+  font-size: 0.8rem;
+  padding: 0.5rem 1rem;
+  border-radius: 30px;
+}
+
+.btn-copy:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--border-hover);
+  transform: translateY(-1px);
+}
+
+.btn-copy.copied {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--color-feature);
+  border-color: var(--border-feature);
+}
+
 
 /* Animations */
 @keyframes spin {

@@ -11,6 +11,7 @@ const lastUpdatedTime = document.getElementById('last-updated-time');
 const searchInput = document.getElementById('search-input');
 const filterButtons = document.querySelectorAll('.filter-btn');
 const feedContainer = document.getElementById('feed-container');
+const exportCsvBtn = document.getElementById('export-csv-btn');
 
 // Counter Elements
 const countTotal = document.getElementById('count-total');
@@ -37,6 +38,9 @@ document.addEventListener('DOMContentLoaded', () => {
 function setupEventListeners() {
   // Refresh Button
   refreshBtn.addEventListener('click', fetchReleaseNotes);
+
+  // Export CSV Button
+  exportCsvBtn.addEventListener('click', exportToCSV);
 
   // Search Input
   searchInput.addEventListener('input', (e) => {
@@ -199,6 +203,12 @@ function renderUpdateCard(update) {
         ${update.content_html}
       </div>
       <div class="card-actions">
+        <button class="btn btn-copy" id="copy-btn-${update.id}" onclick="copyToClipboard('${update.id}')">
+          <svg style="width: 14px; height: 14px; fill: currentColor; vertical-align: middle; margin-right: 4px;" viewBox="0 0 24 24">
+            <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+          </svg>
+          Copy
+        </button>
         <button class="btn btn-tweet" onclick="openTweetModal('${update.id}')">
           <svg style="width: 14px; height: 14px; fill: currentColor; vertical-align: middle; margin-right: 4px;" viewBox="0 0 24 24">
             <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
@@ -322,3 +332,81 @@ function shareOnTwitter() {
   
   closeTweetModal();
 }
+
+// Copy to Clipboard Function
+window.copyToClipboard = function(updateId) {
+  const update = allUpdates.find(u => u.id === updateId);
+  if (!update) return;
+
+  const copyText = `BigQuery [${update.category}] (${update.date}):\n${update.content_text}\n\nRead more: ${update.link}`;
+  
+  navigator.clipboard.writeText(copyText).then(() => {
+    const copyBtn = document.getElementById(`copy-btn-${updateId}`);
+    if (!copyBtn) return;
+    
+    // Save original HTML
+    const originalHTML = copyBtn.innerHTML;
+    
+    // Change to copied state
+    copyBtn.classList.add('copied');
+    copyBtn.innerHTML = `
+      <svg style="width: 14px; height: 14px; fill: currentColor; vertical-align: middle; margin-right: 4px;" viewBox="0 0 24 24">
+        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+      </svg>
+      Copied!
+    `;
+    
+    // Revert after 2 seconds
+    setTimeout(() => {
+      copyBtn.classList.remove('copied');
+      copyBtn.innerHTML = originalHTML;
+    }, 2000);
+  }).catch(err => {
+    console.error('Failed to copy text: ', err);
+  });
+};
+
+// Export to CSV Function
+function exportToCSV() {
+  const filtered = getFilteredUpdates();
+  if (filtered.length === 0) {
+    alert('No data available to export.');
+    return;
+  }
+  
+  // CSV Headers
+  const headers = ['Date', 'Category', 'Link', 'Content'];
+  
+  // Escaper helper
+  const escapeCSV = (text) => {
+    if (text === null || text === undefined) return '';
+    const stringified = String(text);
+    // Escape double quotes by doubling them up and wrap in quotes
+    return `"${stringified.replace(/"/g, '""')}"`;
+  };
+  
+  // Convert rows
+  const csvRows = [
+    headers.join(','),
+    ...filtered.map(u => [
+      escapeCSV(u.date),
+      escapeCSV(u.category),
+      escapeCSV(u.link),
+      escapeCSV(u.content_text)
+    ].join(','))
+  ];
+  
+  const csvContent = csvRows.join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  
+  // Trigger download
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', `bigquery_release_notes_${activeFilter}_export.csv`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
